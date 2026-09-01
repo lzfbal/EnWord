@@ -1,4 +1,4 @@
-function registerIpcHandlers({ ipcMain, dbStore, aiService }) {
+function registerIpcHandlers({ ipcMain, app, dbStore, aiService }) {
   const db = dbStore.getDb();
   const AI_STREAM_CHANNEL = "ai:stream";
 
@@ -297,6 +297,13 @@ function registerIpcHandlers({ ipcMain, dbStore, aiService }) {
 
   ipcMain.handle("progress:getDbPath", () => {
     return dbStore.resolveDbPath();
+  });
+
+  ipcMain.handle("app:getVersion", () => {
+    if (app && typeof app.getVersion === "function") {
+      return String(app.getVersion() || "").trim();
+    }
+    return "";
   });
 
   ipcMain.handle("sentenceFavorites:add", addSentenceFavorite);

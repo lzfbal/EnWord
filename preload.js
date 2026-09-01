@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("electronProgress", {
   getDbPath: () => ipcRenderer.invoke("progress:getDbPath"),
 });
 
+contextBridge.exposeInMainWorld("electronApp", {
+  getVersion: () => ipcRenderer.invoke("app:getVersion"),
+});
+
 contextBridge.exposeInMainWorld("electronAI", {
   getConfigMeta: () => ipcRenderer.invoke("ai:getConfigMeta"),
   evaluateSentence: (payload) => ipcRenderer.invoke("ai:evaluateSentence", payload),

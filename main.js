@@ -15,6 +15,7 @@ app.whenReady().then(() => {
 
   registerIpcHandlers({
     ipcMain,
+    app,
     dbStore,
     aiService,
   });

@@ -126,6 +126,13 @@ managerSearchInputEl.addEventListener("input", () => {
   renderManagerPanel();
 });
 
+if (managerLearningSortEl) {
+  managerLearningSortEl.addEventListener("change", () => {
+    managerLearningSort = String(managerLearningSortEl.value || "time");
+    renderManagerPanel();
+  });
+}
+
 answerInputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     if (!answeredThisRound) {

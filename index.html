@@ -85,6 +85,15 @@
         <button class="btn ghost manager-filter-btn" data-status-filter="learning" type="button">Studying</button>
         <button class="btn ghost manager-filter-btn" data-status-filter="mastered" type="button">Mastered</button>
       </div>
+      <div id="managerLearningSortWrap" class="manager-learning-sort-row is-hidden">
+        <label class="count-label" for="managerLearningSort">
+          Studying Sort:
+          <select id="managerLearningSort">
+            <option value="time">Learning Time (Recent First)</option>
+            <option value="curve">Curve Stage (Low to High)</option>
+          </select>
+        </label>
+      </div>
       <div class="search-row">
         <input id="managerSearchInput" type="text" placeholder="Search in manager..." autocomplete="off" />
       </div>
@@ -196,6 +205,7 @@
   </section>
 
   <button id="exitHiddenModeBtn" class="hidden-mode-exit is-hidden" type="button">Exit Hidden Mode</button>
+  <div id="appVersionBadge" class="app-version-badge" aria-live="polite">v--</div>
 
   <script src="src/renderer/runtime/searchUtils.js"></script>
   <script src="src/renderer/runtime/detailPanels.js"></script>

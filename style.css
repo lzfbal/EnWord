@@ -53,6 +53,21 @@ body {
   cursor: pointer;
 }
 
+.app-version-badge {
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  z-index: 180;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(10, 16, 24, 0.82);
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
 body.hidden-mode.study-tab-active .top-tabs,
 body.hidden-mode.study-tab-active .search-sticky-bar,
 body.hidden-mode.study-tab-active #studyControlsPanel,
@@ -306,6 +321,19 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
   border-color: rgba(63, 164, 255, 0.9);
   color: #cae7ff;
   background: rgba(63, 164, 255, 0.12);
+}
+
+.manager-learning-sort-row {
+  margin-bottom: 8px;
+}
+
+#managerLearningSort {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: rgba(15, 21, 30, 0.8);
 }
 
 #managerSearchInput {

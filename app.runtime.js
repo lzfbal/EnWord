@@ -16,13 +16,14 @@ const sessionSnapshots = {
 let progressById = new Map();
 let selectedFilterTags = new Set();
 let managerStatusFilter = "all";
+let managerLearningSort = "time";
 let currentSentenceTask = null;
 let sentenceTaskRequestId = 0;
 let popFirstAttemptJudged = false;
 let popRetryScheduled = false;
+let popHadWrongAttempt = false;
 
 const REVIEW_INTERVALS_MS = [
-  10 * 60 * 1000,
   24 * 60 * 60 * 1000,
   3 * 24 * 60 * 60 * 1000,
   7 * 24 * 60 * 60 * 1000,
@@ -109,7 +110,10 @@ const detailModalEl = document.getElementById("detailModal");
 const detailModalTitleEl = document.getElementById("detailModalTitle");
 const detailModalBodyEl = document.getElementById("detailModalBody");
 const detailModalCloseBtn = document.getElementById("detailModalCloseBtn");
+const appVersionBadgeEl = document.getElementById("appVersionBadge");
 const managerSearchInputEl = document.getElementById("managerSearchInput");
+const managerLearningSortWrapEl = document.getElementById("managerLearningSortWrap");
+const managerLearningSortEl = document.getElementById("managerLearningSort");
 const managerMetaEl = document.getElementById("managerMeta");
 const managerWordListEl = document.getElementById("managerWordList");
 const managerFilterButtons = Array.from(document.querySelectorAll(".manager-filter-btn"));
@@ -1332,6 +1336,31 @@ function renderManagerPanel() {
   }
 
   const list = words.filter((w) => managerMatchesWord(w));
+  if (managerLearningSortWrapEl) {
+    managerLearningSortWrapEl.classList.toggle("is-hidden", managerStatusFilter !== "learning");
+  }
+  if (managerStatusFilter === "learning") {
+    list.sort((a, b) => {
+      const ra = getProgress(a.id);
+      const rb = getProgress(b.id);
+
+      if (managerLearningSort === "curve") {
+        const sa = Number(ra.stage || 0);
+        const sb = Number(rb.stage || 0);
+        if (sa !== sb) return sa - sb;
+        const ta = Number(ra.lastReviewedAt || 0);
+        const tb = Number(rb.lastReviewedAt || 0);
+        return tb - ta;
+      }
+
+      const ta = Number(ra.lastReviewedAt || 0);
+      const tb = Number(rb.lastReviewedAt || 0);
+      if (ta !== tb) return tb - ta;
+      const sa = Number(ra.stage || 0);
+      const sb = Number(rb.stage || 0);
+      return sa - sb;
+    });
+  }
   managerMetaEl.textContent = `${list.length} items`;
   managerWordListEl.innerHTML = "";
 
@@ -2046,6 +2075,17 @@ function bindAiStreamListener() {
     const text = String(evt?.text || "");
     aiStreamTextByRequestId.set(requestId, text);
   });
+}
+
+async function renderAppVersionBadge() {
+  if (!appVersionBadgeEl) return;
+  try {
+    const version = await window.electronApp?.getVersion?.();
+    const text = String(version || "").trim();
+    appVersionBadgeEl.textContent = text ? `v${text}` : "v--";
+  } catch {
+    appVersionBadgeEl.textContent = "v--";
+  }
 }
 
 function onFavoriteExample(payload) {
@@ -2908,6 +2948,7 @@ async function renderQuestion() {
   const item = currentWord();
   popFirstAttemptJudged = false;
   popRetryScheduled = false;
+  popHadWrongAttempt = false;
   answeredThisRound = false;
   resultEl.textContent = "";
   resultEl.className = "result";
@@ -3022,6 +3063,27 @@ async function applyCurveAfterAnswer(item, ok) {
   await setProgress(next);
 }
 
+async function applyStudyProgressAfterCompletion(item, passedCleanly) {
+  const now = Date.now();
+  const current = getProgress(item.id);
+  const next = { ...current };
+
+  // Study session should not advance the spaced-repetition curve.
+  // Newly learned words stay at stage 0 and wait for the first review window.
+  next.status = "learning";
+  next.stage = 0;
+  next.lastReviewedAt = now;
+  next.nextReviewAt = now + REVIEW_INTERVALS_MS[0];
+
+  if (passedCleanly) {
+    next.rightCount = (current.rightCount || 0) + 1;
+  } else {
+    next.wrongCount = (current.wrongCount || 0) + 1;
+  }
+
+  await setProgress(next);
+}
+
 function renderCurrentWordTags() {
   const item = currentWord();
   if (!item) {
@@ -3127,15 +3189,29 @@ async function checkAnswer() {
       detail = `中文释义: ${item.zh}`;
     }
 
+    if (!ok) {
+      popHadWrongAttempt = true;
+    }
+
     // Move to next question only after getting this word correct.
     // Wrong attempts stay on the current word for retry.
     answeredThisRound = ok;
     totalChecked += 1;
     if (ok) totalCorrect += 1;
-    await applyCurveAfterAnswer(item, ok);
-
     const isFirstAttemptOfThisPop = !popFirstAttemptJudged;
     popFirstAttemptJudged = true;
+
+    if (ok) {
+      const passedCleanly = !popHadWrongAttempt;
+      if (currentSessionType === "review") {
+        await applyCurveAfterAnswer(item, passedCleanly);
+      } else if (currentSessionType === "study") {
+        await applyStudyProgressAfterCompletion(item, passedCleanly);
+      } else {
+        await applyCurveAfterAnswer(item, passedCleanly);
+      }
+    }
+
     const countAsCorrect = isFirstAttemptOfThisPop && ok;
     const mastery = updateSessionWordMastery(item.id, ok, countAsCorrect);
     if (isFirstAttemptOfThisPop && !mastery.completed && !popRetryScheduled) {
@@ -3375,6 +3451,7 @@ function startOrResumeSession(type) {
 
 async function init() {
   try {
+    renderAppVersionBadge();
     setQueueDebugVisible(false);
     const resp = await fetch("words.json");
     words = await resp.json();
