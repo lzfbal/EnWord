@@ -1,0 +1,5 @@
+ai-config.json
+node_modules/
+release/
+__pycache__/
+*.pyc

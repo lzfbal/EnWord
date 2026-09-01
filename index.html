@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Words</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <main class="app">
+    <header class="top">
+    </header>
+
+    <section class="panel top-tabs" aria-label="Main menu tabs">
+      <button id="tabStudyBtn" class="tab-btn active" type="button">Study</button>
+      <button id="tabManagerBtn" class="tab-btn" type="button">Words</button>
+      <button id="tabFavoritesBtn" class="tab-btn" type="button">Sentence</button>
+      <button id="tabCompareFavoritesBtn" class="tab-btn" type="button">Compare</button>
+      <button id="tabSynonymFavoritesBtn" class="tab-btn" type="button">Synonyms</button>
+    </section>
+
+    <section class="panel search-sticky-bar">
+      <div class="search-row no-margin">
+        <div class="search-input-wrap">
+          <input id="searchInput" type="text" placeholder="Search tags/words/meanings" autocomplete="off" />
+          <div id="searchSuggest" class="search-suggest is-hidden"></div>
+        </div>
+        <button id="searchBtn" class="btn ghost" type="button">Search</button>
+        <button id="clearSearchBtn" class="btn ghost" type="button">Clear</button>
+      </div>
+      <div class="filter-row compact">
+        <div class="filter-title">Filter by Tags</div>
+        <div id="filterTags" class="tag-list"></div>
+      </div>
+    </section>
+
+    <section id="studyControlsPanel" class="panel controls">
+      <div class="mode-group">
+        <label>
+          <input type="radio" name="mode" value="zh2en" checked />
+          CN -> EN
+        </label>
+        <label>
+          <input type="radio" name="mode" value="en2zh" />
+          EN -> CN
+        </label>
+        <label>
+          <input type="radio" name="mode" value="sentence" />
+          Sentense
+        </label>
+        <label id="sentenceDifficultyWrap" class="count-label is-hidden">
+          sentence difficulty:
+          <select id="sentenceDifficulty">
+            <option value="starter" selected>Starter</option>
+            <option value="beginner">Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+        </label>
+      </div>
+      <div class="session-actions">
+        <label class="count-label">
+          quantity:
+          <input id="sessionCount" type="number" min="1" max="200" value="20" />
+        </label>
+        <button id="startStudyBtn" class="btn" type="button">New Study</button>
+        <button id="startReviewBtn" class="btn ghost" type="button">Review</button>
+        <button id="resetSessionBtn" class="btn ghost" type="button">Reset</button>
+        <button id="hiddenModeBtn" class="btn ghost" type="button">Hidden Mode</button>
+      </div>
+    </section>
+
+    <section id="managerPanel" class="panel manager-panel is-hidden">
+      <div class="manager-top">
+        <div class="manager-title">Words</div>
+        <button id="closeManagerBtn" class="btn ghost" type="button">Close</button>
+      </div>
+      <div class="manager-filters">
+        <button class="btn ghost manager-filter-btn active" data-status-filter="all" type="button">All</button>
+        <button class="btn ghost manager-filter-btn" data-status-filter="new" type="button">Not Studied</button>
+        <button class="btn ghost manager-filter-btn" data-status-filter="learning" type="button">Studying</button>
+        <button class="btn ghost manager-filter-btn" data-status-filter="mastered" type="button">Mastered</button>
+      </div>
+      <div class="search-row">
+        <input id="managerSearchInput" type="text" placeholder="Search in manager..." autocomplete="off" />
+      </div>
+      <div id="managerMeta" class="search-meta">0 items</div>
+      <div id="managerWordList" class="manager-word-list"></div>
+    </section>
+
+    <section id="favoritesPanel" class="panel favorites-panel is-hidden">
+      <div class="manager-top">
+        <div class="manager-title">Sentence</div>
+        <button id="closeFavoritesBtn" class="btn ghost" type="button">Close</button>
+      </div>
+      <div id="favoritesMeta" class="search-meta">0 items</div>
+      <div id="favoritesList" class="favorites-list"></div>
+    </section>
+
+    <section id="compareFavoritesPanel" class="panel favorites-panel is-hidden">
+      <div class="manager-top">
+        <div class="manager-title">词语对比</div>
+        <button id="closeCompareFavoritesBtn" class="btn ghost" type="button">Close</button>
+      </div>
+      <div id="compareFavoritesMeta" class="search-meta">0 items</div>
+      <div id="compareFavoritesList" class="favorites-list"></div>
+    </section>
+
+    <section id="synonymFavoritesPanel" class="panel favorites-panel is-hidden">
+      <div class="manager-top">
+        <div class="manager-title">同义词收藏</div>
+        <button id="closeSynonymFavoritesBtn" class="btn ghost" type="button">Close</button>
+      </div>
+      <div id="synonymFavoritesMeta" class="search-meta">0 items</div>
+      <div id="synonymFavoritesList" class="favorites-list"></div>
+    </section>
+
+    <section id="filterPanel" class="panel filter-panel">
+      <div id="comparePanel" class="compare-panel is-hidden">
+        <div class="compare-top">
+          <div class="compare-title">Compare List</div>
+          <div class="compare-actions">
+            <button id="runCompareBtn" class="btn" type="button">Compare</button>
+            <button id="clearCompareBtn" class="btn ghost" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="compareList" class="compare-list"></div>
+      </div>
+      <div class="search-results-wrap">
+        <div id="searchMeta" class="search-meta"></div>
+        <div id="searchResults" class="search-results"></div>
+      </div>
+    </section>
+
+    <section id="quizPanel" class="panel quiz is-hidden">
+      <div class="meta">
+        <span id="progress">Question 0 / 0</span>
+        <span id="score">Score 0 / 0</span>
+      </div>
+
+      <div class="prompt-wrap">
+        <div class="prompt-label" id="promptLabel">Chinese Prompt</div>
+        <div class="prompt-text" id="promptText">Loading...</div>
+      </div>
+
+      <div class="answer-wrap">
+        <input id="answerInput" type="text" placeholder="Enter your answer" autocomplete="off" />
+      </div>
+
+      <div class="word-tag-editor">
+        <div class="filter-title">Current Word Tags</div>
+        <div class="tag-editor-row">
+          <input id="newTagInput" type="text" placeholder="Enter new tag, e.g.: common-mistake" autocomplete="off" />
+          <button id="addTagBtn" class="btn ghost" type="button">Add Tag</button>
+        </div>
+        <div id="currentWordTags" class="tag-list"></div>
+      </div>
+
+      <div class="actions">
+        <button id="checkBtn" class="btn" type="button">Check</button>
+        <button id="showBtn" class="btn ghost" type="button">Show Answer</button>
+        <button id="nextBtn" class="btn" type="button">Next</button>
+        <button id="favoriteSentenceBtn" class="btn ghost" type="button">Favorite Sentence</button>
+        <button id="markMasteredBtn" class="btn ghost" type="button">Mastered</button>
+        <button id="exampleBtn" class="btn ghost" type="button">Examples</button>
+        <button id="studySynonymBtn" class="btn ghost" type="button">Synonyms</button>
+      </div>
+
+      <div id="checkLoading" class="check-loading is-hidden" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Checking answer...</span>
+      </div>
+
+      <div id="result" class="result"></div>
+      <div id="correctAnswer" class="correct-answer"></div>
+      <div id="examplesBox" class="examples-box"></div>
+    </section>
+
+    <section id="queueDebugPanel" class="panel queue-debug-panel is-hidden">
+      <div id="queueDebugContent" class="queue-debug-content"></div>
+    </section>
+  </main>
+
+  <section id="detailModal" class="detail-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
+    <div class="detail-modal-card panel">
+      <div class="manager-top">
+        <div id="detailModalTitle" class="manager-title">Word Detail</div>
+        <button id="detailModalCloseBtn" class="btn ghost" type="button">Close</button>
+      </div>
+      <div id="detailModalBody" class="detail-modal-body"></div>
+    </div>
+  </section>
+
+  <button id="exitHiddenModeBtn" class="hidden-mode-exit is-hidden" type="button">Exit Hidden Mode</button>
+
+  <script src="src/renderer/runtime/searchUtils.js"></script>
+  <script src="src/renderer/runtime/detailPanels.js"></script>
+  <script src="app.runtime.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
