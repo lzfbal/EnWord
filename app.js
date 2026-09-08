@@ -45,6 +45,15 @@ startReviewBtn.onclick = () => {
   }
   startOrResumeSession("review");
 };
+if (startQuizBtn) {
+  startQuizBtn.onclick = () => {
+    if (currentSessionType === "quiz") {
+      endSession();
+      return;
+    }
+    startOrResumeSession("quiz");
+  };
+}
 if (resetSessionBtn) {
   resetSessionBtn.addEventListener("click", () => {
     resetLearningSession();

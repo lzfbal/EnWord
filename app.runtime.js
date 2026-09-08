@@ -12,6 +12,7 @@ let sessionWordMastery = new Map();
 const sessionSnapshots = {
   study: null,
   review: null,
+  quiz: null,
 };
 let progressById = new Map();
 let selectedFilterTags = new Set();
@@ -23,13 +24,7 @@ let popFirstAttemptJudged = false;
 let popRetryScheduled = false;
 let popHadWrongAttempt = false;
 
-const REVIEW_INTERVALS_MS = [
-  24 * 60 * 60 * 1000,
-  3 * 24 * 60 * 60 * 1000,
-  7 * 24 * 60 * 60 * 1000,
-  15 * 24 * 60 * 60 * 1000,
-  30 * 24 * 60 * 60 * 1000,
-];
+const REVIEW_INTERVALS_DAYS = [1, 3, 7, 15, 30];
 const REVIEW_SESSION_LIMIT = 30;
 const SESSION_STATE_STORAGE_KEY = "enword.sessionState.v1";
 
@@ -59,6 +54,7 @@ const statusPanelEl = document.getElementById("statusPanel");
 const filterPanelEl = document.getElementById("filterPanel");
 const startStudyBtn = document.getElementById("startStudyBtn");
 const startReviewBtn = document.getElementById("startReviewBtn");
+const startQuizBtn = document.getElementById("startQuizBtn");
 const resetSessionBtn = document.getElementById("resetSessionBtn");
 const endSessionBtn = document.getElementById("endSessionBtn");
 const hiddenModeBtn = document.getElementById("hiddenModeBtn");
@@ -203,6 +199,22 @@ async function setProgress(record) {
   await idbPut(record);
 }
 
+function startOfDayMs(ts) {
+  const base = Number(ts || Date.now());
+  const d = new Date(base);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function addDaysAtStartOfDay(baseTs, days) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  return startOfDayMs(baseTs) + (Math.max(0, Number(days || 0)) * dayMs);
+}
+
+function isDueByDate(nextReviewAt, nowTs = Date.now()) {
+  return startOfDayMs(nextReviewAt) <= startOfDayMs(nowTs);
+}
+
 function getSessionCount() {
   const value = Number.parseInt(sessionCountEl.value, 10);
   if (Number.isNaN(value)) return 20;
@@ -255,7 +267,7 @@ async function setWordStatus(wordId, status) {
 
   if (status === "mastered") {
     next.nextReviewAt = 0;
-    next.stage = Math.max(next.stage || 0, REVIEW_INTERVALS_MS.length - 1);
+    next.stage = Math.max(next.stage || 0, REVIEW_INTERVALS_DAYS.length - 1);
   }
 
   await setProgress(next);
@@ -451,7 +463,7 @@ function getCurveStageText(record) {
     return "";
   }
   const stageIndex = Math.max(0, Number(record.stage || 0));
-  const total = REVIEW_INTERVALS_MS.length;
+  const total = REVIEW_INTERVALS_DAYS.length;
   const current = Math.min(stageIndex + 1, total);
   return `Curve Stage ${current}/${total}`;
 }
@@ -1602,7 +1614,8 @@ function applyHiddenModeUI() {
 function syncStudyActionButtons() {
   const isStudyRunning = currentSessionType === "study";
   const isReviewRunning = currentSessionType === "review";
-  const hasActiveSession = isStudyRunning || isReviewRunning;
+  const isQuizRunning = currentSessionType === "quiz";
+  const hasActiveSession = isStudyRunning || isReviewRunning || isQuizRunning;
 
   if (startStudyBtn) {
     startStudyBtn.textContent = isStudyRunning ? "Stop" : "New Study";
@@ -1612,6 +1625,11 @@ function syncStudyActionButtons() {
   if (startReviewBtn) {
     startReviewBtn.textContent = isReviewRunning ? "Stop" : "Review";
     startReviewBtn.disabled = false;
+  }
+
+  if (startQuizBtn) {
+    startQuizBtn.textContent = isQuizRunning ? "Stop" : "Quiz";
+    startQuizBtn.disabled = false;
   }
 
   if (hiddenModeBtn) {
@@ -2609,6 +2627,7 @@ function resetSessionMasteryState(initialQueue) {
     sessionWordMastery.set(id, {
       correctCount: 0,
       completed: false,
+      hadWrong: false,
     });
   }
 }
@@ -2619,6 +2638,7 @@ function serializeSessionMastery() {
     {
       correctCount: Number(state?.correctCount || 0),
       completed: Boolean(state?.completed),
+      hadWrong: Boolean(state?.hadWrong),
     },
   ]);
 }
@@ -2655,10 +2675,11 @@ function persistSessionState() {
       snapshots: {
         study: cloneSnapshot(sessionSnapshots.study),
         review: cloneSnapshot(sessionSnapshots.review),
+        quiz: cloneSnapshot(sessionSnapshots.quiz),
       },
       activeType: currentSessionType,
       activeSnapshot:
-        currentSessionType === "study" || currentSessionType === "review"
+        currentSessionType === "study" || currentSessionType === "review" || currentSessionType === "quiz"
           ? buildCurrentSessionSnapshot()
           : null,
     };
@@ -2686,11 +2707,13 @@ function applyPersistedSnapshots() {
 
   const studySnap = cloneSnapshot(saved?.snapshots?.study);
   const reviewSnap = cloneSnapshot(saved?.snapshots?.review);
+  const quizSnap = cloneSnapshot(saved?.snapshots?.quiz);
   sessionSnapshots.study = studySnap;
   sessionSnapshots.review = reviewSnap;
+  sessionSnapshots.quiz = quizSnap;
 
   const activeType = String(saved?.activeType || "none");
-  if (activeType !== "study" && activeType !== "review") {
+  if (activeType !== "study" && activeType !== "review" && activeType !== "quiz") {
     persistSessionState();
     return "none";
   }
@@ -2722,19 +2745,20 @@ function deserializeSessionMastery(entries) {
     next.set(id, {
       correctCount: Math.max(0, migratedCorrectCount),
       completed: Boolean(state.completed),
+      hadWrong: Boolean(state.hadWrong),
     });
   }
   return next;
 }
 
 function clearSessionSnapshot(type) {
-  if (type !== "study" && type !== "review") return;
+  if (type !== "study" && type !== "review" && type !== "quiz") return;
   sessionSnapshots[type] = null;
   persistSessionState();
 }
 
 function saveCurrentSessionSnapshot() {
-  if (currentSessionType !== "study" && currentSessionType !== "review") return;
+  if (currentSessionType !== "study" && currentSessionType !== "review" && currentSessionType !== "quiz") return;
   if (!queue.length) {
     clearSessionSnapshot(currentSessionType);
     return;
@@ -2754,7 +2778,7 @@ function hasSnapshotToResume(type) {
 }
 
 function restoreSessionSnapshot(type) {
-  if (type !== "study" && type !== "review") return false;
+  if (type !== "study" && type !== "review" && type !== "quiz") return false;
   if (!hasSnapshotToResume(type)) return false;
 
   const snap = sessionSnapshots[type];
@@ -2787,6 +2811,7 @@ function getSessionMastery(wordId) {
   const created = {
     correctCount: 0,
     completed: false,
+    hadWrong: false,
   };
   sessionWordMastery.set(wordId, created);
   if (sessionTargetCount === 0) {
@@ -2798,14 +2823,16 @@ function getSessionMastery(wordId) {
 function updateSessionWordMastery(wordId, ok, countAsCorrect) {
   const state = getSessionMastery(wordId);
   const wasCompleted = state.completed;
+  const requiredCorrectCount = currentSessionType === "quiz" ? 1 : 3;
 
   if (ok && countAsCorrect) {
     state.correctCount = Math.max(0, Number(state.correctCount || 0)) + 1;
-    if (state.correctCount >= 3) {
+    if (state.correctCount >= requiredCorrectCount) {
       state.completed = true;
     }
   } else if (!ok) {
     state.correctCount = Math.max(0, Number(state.correctCount || 0));
+    state.hadWrong = true;
   }
 
   if (!wasCompleted && state.completed) {
@@ -2813,6 +2840,15 @@ function updateSessionWordMastery(wordId, ok, countAsCorrect) {
   }
 
   return state;
+}
+
+async function settleReviewCurveForRound() {
+  for (const [wordId, state] of sessionWordMastery.entries()) {
+    const word = findWordById(Number(wordId));
+    if (!word) continue;
+    const passedCleanly = !Boolean(state?.hadWrong);
+    await applyCurveAfterAnswer(word, passedCleanly);
+  }
 }
 
 function ensureSessionRetry(item) {
@@ -2829,6 +2865,8 @@ function updateSessionTypeText() {
     sessionTypeTextEl.textContent = "Current: Study Session";
   } else if (currentSessionType === "review") {
     sessionTypeTextEl.textContent = "Current: Review Session";
+  } else if (currentSessionType === "quiz") {
+    sessionTypeTextEl.textContent = "Current: Quiz Session";
   } else {
     sessionTypeTextEl.textContent = "Current: No Session";
   }
@@ -2850,7 +2888,7 @@ function updateStatusCounts() {
 
     if (record.status === "learning") {
       learningCount += 1;
-      if (record.nextReviewAt <= now) {
+      if (isDueByDate(record.nextReviewAt, now)) {
         dueCount += 1;
       }
       continue;
@@ -2892,7 +2930,7 @@ function setIdleMessage(msg, label = "Session Status") {
 }
 
 function stopCurrentSession() {
-  if (currentSessionType !== "study" && currentSessionType !== "review") return;
+  if (currentSessionType !== "study" && currentSessionType !== "review" && currentSessionType !== "quiz") return;
 
   const stoppedType = currentSessionType;
   saveCurrentSessionSnapshot();
@@ -2903,7 +2941,9 @@ function stopCurrentSession() {
   setIdleMessage(
     stoppedType === "study"
       ? "Study paused. Click New Study to continue this round."
-      : "Review paused. Click Review to continue this round."
+      : stoppedType === "review"
+        ? "Review paused. Click Review to continue this round."
+        : "Quiz paused. Click Quiz to continue this round."
   );
   updateStatusCounts();
 }
@@ -2912,6 +2952,7 @@ function resetLearningSession() {
   // Clear all in-memory and persisted session snapshots to force a fresh start.
   sessionSnapshots.study = null;
   sessionSnapshots.review = null;
+  sessionSnapshots.quiz = null;
   currentSessionType = "none";
   queue = [];
   currentIndex = 0;
@@ -3025,13 +3066,14 @@ function markResult(ok, detail) {
 
 function formatWordMasteryProgress(state) {
   if (!state || typeof state !== "object") return "";
-  const progress = Math.max(0, Math.min(3, Number(state.correctCount || 0)));
-  return `本词正确进度: ${progress}/3`;
+  const requiredCorrectCount = currentSessionType === "quiz" ? 1 : 3;
+  const progress = Math.max(0, Math.min(requiredCorrectCount, Number(state.correctCount || 0)));
+  return `本词正确进度: ${progress}/${requiredCorrectCount}`;
 }
 
-function getNextStageInterval(stage) {
-  const idx = Math.min(stage, REVIEW_INTERVALS_MS.length - 1);
-  return REVIEW_INTERVALS_MS[idx];
+function getNextStageIntervalDays(stage) {
+  const idx = Math.min(stage, REVIEW_INTERVALS_DAYS.length - 1);
+  return REVIEW_INTERVALS_DAYS[idx];
 }
 
 async function applyCurveAfterAnswer(item, ok) {
@@ -3050,14 +3092,14 @@ async function applyCurveAfterAnswer(item, ok) {
   next.lastReviewedAt = now;
 
   if (ok) {
-    next.stage = Math.min(current.stage + 1, REVIEW_INTERVALS_MS.length - 1);
+    next.stage = Math.min(current.stage + 1, REVIEW_INTERVALS_DAYS.length - 1);
     next.rightCount = (current.rightCount || 0) + 1;
-    next.nextReviewAt = now + getNextStageInterval(next.stage);
+    next.nextReviewAt = addDaysAtStartOfDay(now, getNextStageIntervalDays(next.stage));
   } else {
     // Wrong answer resets curve to the first stage.
     next.stage = 0;
     next.wrongCount = (current.wrongCount || 0) + 1;
-    next.nextReviewAt = now + REVIEW_INTERVALS_MS[0];
+    next.nextReviewAt = addDaysAtStartOfDay(now, REVIEW_INTERVALS_DAYS[0]);
   }
 
   await setProgress(next);
@@ -3073,7 +3115,7 @@ async function applyStudyProgressAfterCompletion(item, passedCleanly) {
   next.status = "learning";
   next.stage = 0;
   next.lastReviewedAt = now;
-  next.nextReviewAt = now + REVIEW_INTERVALS_MS[0];
+  next.nextReviewAt = addDaysAtStartOfDay(now, REVIEW_INTERVALS_DAYS[0]);
 
   if (passedCleanly) {
     next.rightCount = (current.rightCount || 0) + 1;
@@ -3204,9 +3246,11 @@ async function checkAnswer() {
     if (ok) {
       const passedCleanly = !popHadWrongAttempt;
       if (currentSessionType === "review") {
-        await applyCurveAfterAnswer(item, passedCleanly);
+        // Review curve is settled only once when the full review round ends.
       } else if (currentSessionType === "study") {
         await applyStudyProgressAfterCompletion(item, passedCleanly);
+      } else if (currentSessionType === "quiz") {
+        // Quiz is exam-only and does not change learning curve or progress.
       } else {
         await applyCurveAfterAnswer(item, passedCleanly);
       }
@@ -3224,7 +3268,7 @@ async function checkAnswer() {
     const progressText = formatWordMasteryProgress(mastery);
     const resultDetail = progressText ? `${detail}\n${progressText}` : detail;
     markResult(ok, resultDetail);
-    if (isHiddenMode && activeMainTab === "study" && (currentSessionType === "study" || currentSessionType === "review")) {
+    if (isHiddenMode && activeMainTab === "study" && (currentSessionType === "study" || currentSessionType === "review" || currentSessionType === "quiz")) {
       if (!ok) {
         resultEl.textContent = "Retry Later";
       }
@@ -3235,6 +3279,9 @@ async function checkAnswer() {
     updateStatusCounts();
 
     if (currentSessionType !== "none" && isCurrentSessionCompleted()) {
+      if (currentSessionType === "review") {
+        await settleReviewCurveForRound();
+      }
       clearSessionSnapshot(currentSessionType);
       currentSessionType = "none";
       syncStatusPanelVisibility();
@@ -3348,7 +3395,7 @@ function buildReviewQueue(limit) {
 
   for (const record of progressById.values()) {
     if (record.status !== "learning") continue;
-    if (record.nextReviewAt > now) continue;
+    if (!isDueByDate(record.nextReviewAt, now)) continue;
     const word = findWordById(record.id);
     if (!word) continue;
     if (!wordMatchesFilters(word)) continue;
@@ -3365,16 +3412,33 @@ function buildReviewQueue(limit) {
   return dueLearning.slice(0, limit).map((x) => x.word);
 }
 
+function buildQuizQueue(limit) {
+  const quizWords = words.filter((w) => {
+    const status = getProgress(w.id).status;
+    if (status !== "learning" && status !== "mastered") return false;
+    return wordMatchesFilters(w);
+  });
+  shuffle(quizWords);
+  return quizWords.slice(0, limit);
+}
+
 function startSession(type) {
   setMainTab("study");
   clearSessionSnapshot(type);
-  const limit = type === "review" ? REVIEW_SESSION_LIMIT : getSessionCount();
+  const limit =
+    type === "review"
+      ? REVIEW_SESSION_LIMIT
+      : type === "quiz"
+        ? Number.MAX_SAFE_INTEGER
+        : getSessionCount();
   if (mode === "sentence" && type === "study") {
     queue = buildSentencePracticeQueue(limit);
+  } else if (type === "quiz") {
+    queue = buildQuizQueue(limit);
   } else {
     queue = type === "study" ? buildStudyQueue(limit) : buildReviewQueue(limit);
   }
-  if (type === "study") {
+  if (type === "study" || type === "quiz") {
     shuffle(queue);
   }
   resetSessionMasteryState(queue);
@@ -3399,8 +3463,10 @@ function startSession(type) {
       } else {
         setIdleMessage("No new words available. All are in studying status. You can switch to review.");
       }
-    } else {
+    } else if (type === "review") {
       setIdleMessage("No review words are due right now. Please come back later.");
+    } else {
+      setIdleMessage("No studying or mastered words available for quiz right now.");
     }
     return;
   }
@@ -3416,7 +3482,7 @@ function startSession(type) {
 
 function hasUnfinishedSession() {
   if (!queue.length) return false;
-  if (currentSessionType !== "study" && currentSessionType !== "review") return false;
+  if (currentSessionType !== "study" && currentSessionType !== "review" && currentSessionType !== "quiz") return false;
   if (isCurrentSessionCompleted()) return false;
   return true;
 }
@@ -3474,7 +3540,7 @@ async function init() {
     const lastActiveType = applyPersistedSnapshots();
     setMainTab("study");
     syncStatusPanelVisibility();
-    if (lastActiveType === "study" || lastActiveType === "review") {
+    if (lastActiveType === "study" || lastActiveType === "review" || lastActiveType === "quiz") {
       if (restoreSessionSnapshot(lastActiveType)) {
         setQuizVisible(true);
         applyModeSpecificUI();
@@ -3484,11 +3550,11 @@ async function init() {
         renderQuestion();
       } else {
         setQuizVisible(false);
-        setIdleMessage("Choose Start New Study or Start Review.");
+        setIdleMessage("Choose Start New Study, Review, or Quiz.");
       }
     } else {
       setQuizVisible(false);
-      setIdleMessage("Choose Start New Study or Start Review.");
+      setIdleMessage("Choose Start New Study, Review, or Quiz.");
     }
     applyModeSpecificUI();
     applyHiddenModeUI();
@@ -3509,7 +3575,7 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("beforeunload", () => {
-  if (currentSessionType === "study" || currentSessionType === "review") {
+  if (currentSessionType === "study" || currentSessionType === "review" || currentSessionType === "quiz") {
     saveCurrentSessionSnapshot();
     return;
   }
