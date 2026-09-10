@@ -1,0 +1,12 @@
+{
+  "provider": "openai-compatible",
+  "baseUrl": "<your_base_url_here>",
+  "endpoint": "chat/completions",
+  "model": "qwen-3.8-27b",
+  "apiKey": "<your_api_key_here>",
+  "reasoningEffort": "low",
+  "contextWindow": 262144,
+  "temperature": 0.3,
+  "maxTokens": 500,
+  "timeoutMs": 20000
+}
