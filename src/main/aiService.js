@@ -343,6 +343,17 @@ function createAiService({ appRoot }) {
     return "beginner";
   }
 
+  function normalizeChineseTranslation(raw) {
+    const text = String(raw || "")
+      .replace(/```(?:json)?/gi, "")
+      .replace(/```/g, "")
+      .replace(/^\s*中文[:：]\s*/i, "")
+      .replace(/^\s*翻译[:：]\s*/i, "")
+      .trim();
+    const firstLine = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || "";
+    return firstLine || text;
+  }
+
   function difficultySpec(difficulty) {
     if (difficulty === "advanced") {
       return "高级: IELTS 6.5-7.5，句子可包含让步/条件从句或抽象话题，长度约18-30字。";
@@ -498,6 +509,51 @@ function createAiService({ appRoot }) {
       difficulty,
       model,
       source: "model",
+    };
+  }
+
+  async function translateSentenceToChineseViaModel(payload, options = {}) {
+    const enSentence = String(payload?.enSentence || "").trim();
+    if (!enSentence) {
+      throw new Error("enSentence is required");
+    }
+
+    const systemPrompt = [
+      "你是专业英译中助手。",
+      "把用户输入的英文句子翻译成自然、简洁、准确的中文。",
+      "只输出 JSON，格式如下:",
+      "{",
+      '  "zhText": string',
+      "}",
+      "规则:",
+      "1) 不要解释，不要额外说明。",
+      "2) 保留原句语气和时态。",
+      "3) 仅返回一条中文翻译。",
+    ].join("\n");
+
+    const { parsed, rawContent, model } = await requestJsonFromModel({
+      systemPrompt,
+      userPayload: { enSentence },
+      temperature: 0.2,
+      maxTokens: 240,
+      allowRawOnParseFailure: true,
+      onStreamText: typeof options?.onStreamText === "function" ? options.onStreamText : null,
+    });
+
+    let zhText = "";
+    if (parsed && typeof parsed === "object") {
+      zhText = normalizeChineseTranslation(parsed.zhText);
+    }
+    if (!zhText) {
+      zhText = normalizeChineseTranslation(rawContent);
+    }
+    if (!zhText || !/[\u4e00-\u9fff]/.test(zhText)) {
+      throw new Error("No valid Chinese translation from model response");
+    }
+
+    return {
+      zhText,
+      model,
     };
   }
 
@@ -976,6 +1032,7 @@ function createAiService({ appRoot }) {
     readAiConfig,
     evaluateSentenceViaModel,
     generateSentencePromptViaModel,
+    translateSentenceToChineseViaModel,
     generateExamplesViaModel,
     getWordDetailsViaModel,
     compareWordsViaModel,

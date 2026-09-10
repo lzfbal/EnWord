@@ -355,6 +355,15 @@ function registerIpcHandlers({ ipcMain, app, dbStore, aiService }) {
     });
   });
 
+  ipcMain.handle("ai:translateSentenceToChinese", async (event, payload) => {
+    const requestId = String(payload?.requestId || "").trim();
+    return aiService.translateSentenceToChineseViaModel(payload, {
+      onStreamText: (_delta, fullText) => {
+        emitAiStream(event, requestId, "delta", fullText);
+      },
+    });
+  });
+
   ipcMain.handle("ai:generateExamples", async (event, payload) => {
     const requestId = String(payload?.requestId || "").trim();
     return aiService.generateExamplesViaModel(payload, {

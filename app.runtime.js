@@ -20,6 +20,7 @@ let managerStatusFilter = "all";
 let managerLearningSort = "time";
 let currentSentenceTask = null;
 let sentenceTaskRequestId = 0;
+let customSentenceZhText = "";
 let popFirstAttemptJudged = false;
 let popRetryScheduled = false;
 let popHadWrongAttempt = false;
@@ -63,6 +64,11 @@ const closeManagerBtn = document.getElementById("closeManagerBtn");
 const closeFavoritesBtn = document.getElementById("closeFavoritesBtn");
 const favoriteSentenceBtn = document.getElementById("favoriteSentenceBtn");
 const sentenceDifficultyWrapEl = document.getElementById("sentenceDifficultyWrap");
+const sentenceTranslatePanelEl = document.getElementById("sentenceTranslatePanel");
+const customSentenceInputEl = document.getElementById("customSentenceInput");
+const translateSentenceBtn = document.getElementById("translateSentenceBtn");
+const favoriteTranslatedSentenceBtn = document.getElementById("favoriteTranslatedSentenceBtn");
+const customSentenceResultEl = document.getElementById("customSentenceResult");
 const sessionCountEl = document.getElementById("sessionCount");
 const sentenceDifficultyEl = document.getElementById("sentenceDifficulty");
 const newCountEl = document.getElementById("newCount");
@@ -334,6 +340,98 @@ function applyModeSpecificUI() {
   }
   if (favoriteSentenceBtn) {
     favoriteSentenceBtn.classList.toggle("is-hidden", !sentenceMode);
+  }
+}
+
+function setCustomSentenceTranslateResult(text, type = "") {
+  if (!customSentenceResultEl) return;
+  customSentenceResultEl.classList.remove("bad", "ok");
+  if (type) {
+    customSentenceResultEl.classList.add(type);
+  }
+  customSentenceResultEl.textContent = String(text || "");
+}
+
+function clearCustomSentenceTranslateState() {
+  customSentenceZhText = "";
+  setCustomSentenceTranslateResult("");
+}
+
+async function translateCustomSentenceToChinese() {
+  if (!window.electronAI?.translateSentenceToChinese) {
+    setCustomSentenceTranslateResult("AI translation is unavailable.", "bad");
+    return;
+  }
+
+  const enSentence = String(customSentenceInputEl?.value || "").trim();
+  if (!enSentence) {
+    setCustomSentenceTranslateResult("Please type an English sentence first.", "bad");
+    return;
+  }
+
+  const payload = {
+    enSentence,
+    requestId: nextAiRequestId("sentence-custom-translate"),
+  };
+  const aiRequestId = payload.requestId;
+  let tick = null;
+
+  try {
+    tick = setInterval(() => {
+      renderThinkingPreviewInElement(
+        customSentenceResultEl,
+        "Translating...",
+        aiStreamTextByRequestId.get(aiRequestId) || ""
+      );
+    }, 180);
+
+    const translated = await dedupeAiRequest(
+      "translateSentenceToChinese",
+      payload,
+      () => window.electronAI.translateSentenceToChinese(payload)
+    );
+
+    if (tick) clearInterval(tick);
+    aiStreamTextByRequestId.delete(aiRequestId);
+    clearThinkingPreviewInElement(customSentenceResultEl);
+
+    const zhText = String(translated?.zhText || "").trim();
+    if (!zhText) {
+      throw new Error("Empty translation");
+    }
+
+    customSentenceZhText = zhText;
+    setCustomSentenceTranslateResult(`ZH: ${zhText}`, "ok");
+  } catch (err) {
+    if (tick) clearInterval(tick);
+    aiStreamTextByRequestId.delete(aiRequestId);
+    clearThinkingPreviewInElement(customSentenceResultEl);
+    customSentenceZhText = "";
+    setCustomSentenceTranslateResult(`Translate failed: ${String(err?.message || "Unknown error")}`, "bad");
+  }
+}
+
+async function favoriteTranslatedSentence() {
+  const enText = String(customSentenceInputEl?.value || "").trim();
+  const zhText = String(customSentenceZhText || "").trim();
+
+  if (!enText) {
+    setCustomSentenceTranslateResult("Please type an English sentence first.", "bad");
+    return;
+  }
+  if (!zhText) {
+    setCustomSentenceTranslateResult("Please translate the sentence before favoriting.", "bad");
+    return;
+  }
+
+  try {
+    await addSentenceFavorite({ zhText, enText });
+    setCustomSentenceTranslateResult(`Saved\nZH: ${zhText}\nEN: ${enText}`, "ok");
+    if (!favoritesPanelEl?.classList.contains("is-hidden")) {
+      renderFavoritesPanel();
+    }
+  } catch (err) {
+    setCustomSentenceTranslateResult(`Favorite failed: ${String(err?.message || "Unknown error")}`, "bad");
   }
 }
 

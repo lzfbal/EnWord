@@ -1,6 +1,6 @@
 {
   "name": "enword",
-  "version": "0.00.03",
+  "version": "0.00.04",
   "description": "English word trainer desktop app",
   "main": "main.js",
   "scripts": {

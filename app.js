@@ -31,6 +31,22 @@ exampleBtn.addEventListener("click", showExamplesForCurrentWord);
 if (studySynonymBtn) {
   studySynonymBtn.addEventListener("click", showSynonymsForCurrentWord);
 }
+if (translateSentenceBtn) {
+  translateSentenceBtn.addEventListener("click", translateCustomSentenceToChinese);
+}
+if (favoriteTranslatedSentenceBtn) {
+  favoriteTranslatedSentenceBtn.addEventListener("click", favoriteTranslatedSentence);
+}
+if (customSentenceInputEl) {
+  customSentenceInputEl.addEventListener("input", () => {
+    clearCustomSentenceTranslateState();
+  });
+  customSentenceInputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      translateCustomSentenceToChinese();
+    }
+  });
+}
 startStudyBtn.onclick = () => {
   if (currentSessionType === "study") {
     endSession();

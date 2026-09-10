@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("electronAI", {
   getConfigMeta: () => ipcRenderer.invoke("ai:getConfigMeta"),
   evaluateSentence: (payload) => ipcRenderer.invoke("ai:evaluateSentence", payload),
   generateSentencePrompt: (payload) => ipcRenderer.invoke("ai:generateSentencePrompt", payload),
+  translateSentenceToChinese: (payload) => ipcRenderer.invoke("ai:translateSentenceToChinese", payload),
   generateExamples: (payload) => ipcRenderer.invoke("ai:generateExamples", payload),
   getWordDetails: (payload) => ipcRenderer.invoke("ai:getWordDetails", payload),
   compareWords: (payload) => ipcRenderer.invoke("ai:compareWords", payload),

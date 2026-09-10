@@ -50,7 +50,7 @@
         </label>
         <label>
           <input type="radio" name="mode" value="sentence" />
-          Sentense
+          translation
         </label>
         <label id="sentenceDifficultyWrap" class="count-label is-hidden">
           sentence difficulty:
@@ -73,6 +73,7 @@
         <button id="resetSessionBtn" class="btn ghost" type="button">Reset</button>
         <button id="hiddenModeBtn" class="btn ghost" type="button">Hidden Mode</button>
       </div>
+
     </section>
 
     <section id="managerPanel" class="panel manager-panel is-hidden">
@@ -106,6 +107,15 @@
       <div class="manager-top">
         <div class="manager-title">Sentence</div>
         <button id="closeFavoritesBtn" class="btn ghost" type="button">Close</button>
+      </div>
+      <div id="sentenceTranslatePanel" class="sentence-translate-panel">
+        <div class="filter-title">Translate Sentence To Chinese</div>
+        <div class="sentence-translate-row">
+          <input id="customSentenceInput" type="text" placeholder="Type an English sentence to translate" autocomplete="off" />
+          <button id="translateSentenceBtn" class="btn ghost" type="button">Translate</button>
+          <button id="favoriteTranslatedSentenceBtn" class="btn ghost" type="button">Favorite</button>
+        </div>
+        <div id="customSentenceResult" class="sentence-translate-result"></div>
       </div>
       <div id="favoritesMeta" class="search-meta">0 items</div>
       <div id="favoritesList" class="favorites-list"></div>
