@@ -47,6 +47,21 @@ if (customSentenceInputEl) {
     }
   });
 }
+if (quizStageAllEl) {
+  quizStageAllEl.addEventListener("change", (e) => {
+    setQuizStageAllSelected(Boolean(e.target?.checked));
+  });
+}
+if (quizStageOptionsEl) {
+  quizStageOptionsEl.addEventListener("change", (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement)) return;
+    if (el.type !== "checkbox") return;
+    const stage = Number.parseInt(el.dataset.stage || "", 10);
+    if (!Number.isFinite(stage)) return;
+    setQuizStageSelected(stage, el.checked);
+  });
+}
 startStudyBtn.onclick = () => {
   if (currentSessionType === "study") {
     endSession();

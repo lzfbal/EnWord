@@ -18,6 +18,7 @@ let progressById = new Map();
 let selectedFilterTags = new Set();
 let managerStatusFilter = "all";
 let managerLearningSort = "time";
+let selectedQuizStages = new Set();
 let currentSentenceTask = null;
 let sentenceTaskRequestId = 0;
 let customSentenceZhText = "";
@@ -69,6 +70,8 @@ const customSentenceInputEl = document.getElementById("customSentenceInput");
 const translateSentenceBtn = document.getElementById("translateSentenceBtn");
 const favoriteTranslatedSentenceBtn = document.getElementById("favoriteTranslatedSentenceBtn");
 const customSentenceResultEl = document.getElementById("customSentenceResult");
+const quizStageAllEl = document.getElementById("quizStageAll");
+const quizStageOptionsEl = document.getElementById("quizStageOptions");
 const sessionCountEl = document.getElementById("sessionCount");
 const sentenceDifficultyEl = document.getElementById("sentenceDifficulty");
 const newCountEl = document.getElementById("newCount");
@@ -116,6 +119,7 @@ const appVersionBadgeEl = document.getElementById("appVersionBadge");
 const managerSearchInputEl = document.getElementById("managerSearchInput");
 const managerLearningSortWrapEl = document.getElementById("managerLearningSortWrap");
 const managerLearningSortEl = document.getElementById("managerLearningSort");
+const managerCurveStatsEl = document.getElementById("managerCurveStats");
 const managerMetaEl = document.getElementById("managerMeta");
 const managerWordListEl = document.getElementById("managerWordList");
 const managerFilterButtons = Array.from(document.querySelectorAll(".manager-filter-btn"));
@@ -225,6 +229,67 @@ function getSessionCount() {
   const value = Number.parseInt(sessionCountEl.value, 10);
   if (Number.isNaN(value)) return 20;
   return Math.min(200, Math.max(1, value));
+}
+
+function normalizeStageIndex(stage) {
+  return Math.max(0, Math.min(REVIEW_INTERVALS_DAYS.length - 1, Number(stage || 0)));
+}
+
+function ensureQuizStagesDefaultSelected() {
+  if (selectedQuizStages.size > 0) return;
+  selectedQuizStages = new Set(REVIEW_INTERVALS_DAYS.map((_, idx) => idx));
+}
+
+function syncQuizStageAllCheckbox() {
+  if (!quizStageAllEl) return;
+  const total = REVIEW_INTERVALS_DAYS.length;
+  const selected = selectedQuizStages.size;
+  quizStageAllEl.checked = selected >= total;
+  quizStageAllEl.indeterminate = selected > 0 && selected < total;
+}
+
+function renderQuizStageOptions() {
+  if (!quizStageOptionsEl) return;
+  ensureQuizStagesDefaultSelected();
+  quizStageOptionsEl.innerHTML = "";
+
+  for (let i = 0; i < REVIEW_INTERVALS_DAYS.length; i += 1) {
+    const label = document.createElement("label");
+    label.className = "quiz-stage-chip";
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.stage = String(i);
+    input.checked = selectedQuizStages.has(i);
+
+    const text = document.createElement("span");
+    text.textContent = `Stage ${i + 1}`;
+
+    label.appendChild(input);
+    label.appendChild(text);
+    quizStageOptionsEl.appendChild(label);
+  }
+
+  syncQuizStageAllCheckbox();
+}
+
+function setQuizStageAllSelected(checked) {
+  if (checked) {
+    selectedQuizStages = new Set(REVIEW_INTERVALS_DAYS.map((_, idx) => idx));
+  } else {
+    selectedQuizStages = new Set();
+  }
+  renderQuizStageOptions();
+}
+
+function setQuizStageSelected(stage, checked) {
+  const stageIndex = normalizeStageIndex(stage);
+  if (checked) {
+    selectedQuizStages.add(stageIndex);
+  } else {
+    selectedQuizStages.delete(stageIndex);
+  }
+  syncQuizStageAllCheckbox();
 }
 
 function findWordById(id) {
@@ -1449,6 +1514,25 @@ function renderManagerPanel() {
   if (managerLearningSortWrapEl) {
     managerLearningSortWrapEl.classList.toggle("is-hidden", managerStatusFilter !== "learning");
   }
+
+  if (managerCurveStatsEl) {
+    const showCurveStats = managerStatusFilter === "learning" && managerLearningSort === "curve";
+    managerCurveStatsEl.classList.toggle("is-hidden", !showCurveStats);
+    if (showCurveStats) {
+      const counts = new Array(REVIEW_INTERVALS_DAYS.length).fill(0);
+      for (const word of list) {
+        const record = getProgress(word.id);
+        const stage = Math.max(0, Math.min(REVIEW_INTERVALS_DAYS.length - 1, Number(record.stage || 0)));
+        counts[stage] += 1;
+      }
+      managerCurveStatsEl.textContent = counts
+        .map((count, idx) => `Stage ${idx + 1}: ${count}`)
+        .join(" | ");
+    } else {
+      managerCurveStatsEl.textContent = "";
+    }
+  }
+
   if (managerStatusFilter === "learning") {
     list.sort((a, b) => {
       const ra = getProgress(a.id);
@@ -3511,9 +3595,13 @@ function buildReviewQueue(limit) {
 }
 
 function buildQuizQueue(limit) {
+  ensureQuizStagesDefaultSelected();
   const quizWords = words.filter((w) => {
-    const status = getProgress(w.id).status;
+    const record = getProgress(w.id);
+    const status = record.status;
     if (status !== "learning" && status !== "mastered") return false;
+    const stage = normalizeStageIndex(record.stage);
+    if (selectedQuizStages.size > 0 && !selectedQuizStages.has(stage)) return false;
     return wordMatchesFilters(w);
   });
   shuffle(quizWords);
@@ -3616,6 +3704,8 @@ function startOrResumeSession(type) {
 async function init() {
   try {
     renderAppVersionBadge();
+    ensureQuizStagesDefaultSelected();
+    renderQuizStageOptions();
     setQueueDebugVisible(false);
     const resp = await fetch("words.json");
     words = await resp.json();

@@ -74,6 +74,15 @@
         <button id="hiddenModeBtn" class="btn ghost" type="button">Hidden Mode</button>
       </div>
 
+      <div id="quizStageFilterWrap" class="quiz-stage-filter-row">
+        <span class="quiz-stage-filter-title">Quiz Curve Stage:</span>
+        <label class="quiz-stage-chip">
+          <input id="quizStageAll" type="checkbox" checked />
+          <span>All</span>
+        </label>
+        <div id="quizStageOptions" class="quiz-stage-options"></div>
+      </div>
+
     </section>
 
     <section id="managerPanel" class="panel manager-panel is-hidden">
@@ -95,6 +104,7 @@
             <option value="curve">Curve Stage (Low to High)</option>
           </select>
         </label>
+        <div id="managerCurveStats" class="manager-curve-stats is-hidden"></div>
       </div>
       <div class="search-row">
         <input id="managerSearchInput" type="text" placeholder="Search in manager..." autocomplete="off" />

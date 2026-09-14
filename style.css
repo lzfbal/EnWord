@@ -888,6 +888,14 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
   gap: 6px;
 }
 
+.manager-curve-stats {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  color: #9fb0c2;
+  white-space: normal;
+  line-height: 1.5;
+}
+
 .filter-title {
   color: var(--muted);
   font-size: 0.8rem;
@@ -898,6 +906,42 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.quiz-stage-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.quiz-stage-filter-title {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.quiz-stage-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quiz-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.75rem;
+  color: #cae7ff;
+  background: rgba(63, 164, 255, 0.1);
+}
+
+.quiz-stage-chip input {
+  margin: 0;
 }
 
 .tag-chip {
