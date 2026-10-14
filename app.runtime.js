@@ -8,6 +8,9 @@ let answeredThisRound = false;
 let currentSessionType = "none";
 let sessionTargetCount = 0;
 let sessionCompletedCount = 0;
+// Retries are appended to the queue, so queue length is not a monotonic
+// representation of the current question number.
+let sessionProgressPosition = 0;
 let sessionWordMastery = new Map();
 const sessionSnapshots = {
   study: null,
@@ -20,8 +23,10 @@ let managerStatusFilter = "all";
 let managerLearningSort = "time";
 let selectedQuizStages = new Set();
 let currentSentenceTask = null;
+let currentSentenceFavoriteAnswer = "";
 let sentenceTaskRequestId = 0;
 let customSentenceZhText = "";
+let previousSentencePatternId = "";
 let popFirstAttemptJudged = false;
 let popRetryScheduled = false;
 let popHadWrongAttempt = false;
@@ -64,7 +69,6 @@ const exitHiddenModeBtn = document.getElementById("exitHiddenModeBtn");
 const closeManagerBtn = document.getElementById("closeManagerBtn");
 const closeFavoritesBtn = document.getElementById("closeFavoritesBtn");
 const favoriteSentenceBtn = document.getElementById("favoriteSentenceBtn");
-const sentenceDifficultyWrapEl = document.getElementById("sentenceDifficultyWrap");
 const sentenceTranslatePanelEl = document.getElementById("sentenceTranslatePanel");
 const customSentenceInputEl = document.getElementById("customSentenceInput");
 const translateSentenceBtn = document.getElementById("translateSentenceBtn");
@@ -73,7 +77,6 @@ const customSentenceResultEl = document.getElementById("customSentenceResult");
 const quizStageAllEl = document.getElementById("quizStageAll");
 const quizStageOptionsEl = document.getElementById("quizStageOptions");
 const sessionCountEl = document.getElementById("sessionCount");
-const sentenceDifficultyEl = document.getElementById("sentenceDifficulty");
 const newCountEl = document.getElementById("newCount");
 const learningCountEl = document.getElementById("learningCount");
 const masteredCountEl = document.getElementById("masteredCount");
@@ -367,27 +370,29 @@ function guessPos(zh) {
 }
 
 function getSentenceDifficulty() {
-  const value = String(sentenceDifficultyEl?.value || "starter").toLowerCase();
-  if (value === "advanced") return "advanced";
-  if (value === "intermediate") return "intermediate";
-  if (value === "beginner") return "beginner";
-  if (value === "starter") return "starter";
-  return "beginner";
+  return "advanced";
 }
 
-function sentenceDifficultyLabel(value) {
-  if (value === "advanced") return "Advanced";
-  if (value === "intermediate") return "Intermediate";
-  if (value === "beginner") return "Beginner";
-  if (value === "starter") return "Starter";
-  return "Beginner";
+const SENTENCE_PRACTICE_PATTERNS = [
+  { id: "simple", label: "简单陈述句", instruction: "使用一个清晰的主谓宾结构，不使用转折、让步或条件从句。" },
+  { id: "coordinate", label: "并列陈述句", instruction: "使用并列结构表达两个相关事实，不使用转折或让步关系。" },
+  { id: "cause-effect", label: "因果句", instruction: "使用清楚的因果关系，例如 because、therefore 或 due to。" },
+  { id: "relative-clause", label: "定语从句", instruction: "使用一个自然的定语从句补充信息。" },
+  { id: "conditional", label: "条件句", instruction: "使用真实、自然的条件关系，例如 if 或 unless。" },
+  { id: "passive", label: "被动句", instruction: "使用自然的被动语态，重点练习动作的承受者。" },
+  { id: "contrast", label: "转折/让步句", instruction: "使用转折或让步关系，例如 although、while 或 despite。" },
+];
+
+function pickSentencePracticePattern() {
+  const candidates = SENTENCE_PRACTICE_PATTERNS.filter((item) => item.id !== previousSentencePatternId);
+  const pool = candidates.length ? candidates : SENTENCE_PRACTICE_PATTERNS;
+  const pattern = pool[Math.floor(Math.random() * pool.length)];
+  previousSentencePatternId = pattern.id;
+  return pattern;
 }
 
 function applyModeSpecificUI() {
   const sentenceMode = mode === "sentence";
-  if (sentenceDifficultyWrapEl) {
-    sentenceDifficultyWrapEl.classList.toggle("is-hidden", !sentenceMode);
-  }
   if (showBtn) {
     showBtn.classList.add("is-hidden");
   }
@@ -500,16 +505,34 @@ async function favoriteTranslatedSentence() {
   }
 }
 
-async function buildSentenceTaskByModel(word, options = {}) {
+function pickSentencePracticeWords(pool, minCount = 2, maxCount = 4) {
+  const source = Array.isArray(pool) ? [...pool.filter(Boolean)] : [];
+  shuffle(source);
+
+  const low = Math.max(2, Math.min(minCount, maxCount));
+  const high = Math.max(low, Math.max(minCount, maxCount));
+  const desired = Math.min(source.length, high > low ? low + Math.floor(Math.random() * (high - low + 1)) : low);
+  return source.slice(0, desired);
+}
+
+async function buildSentenceTaskByModel(wordOrWords, options = {}) {
   if (!window.electronAI?.generateSentencePrompt) {
     throw new Error("AI sentence generation is unavailable. Please check app integration.");
   }
 
   try {
+    const words = Array.isArray(wordOrWords) ? wordOrWords.filter(Boolean) : [wordOrWords].filter(Boolean);
+    const targetWords = words.map((word) => String(word?.en || "").trim()).filter(Boolean);
+    const targetMeanings = words.map((word) => extractMeaningCore(word?.zh || "")).filter(Boolean);
+    const sentencePattern = pickSentencePracticePattern();
     const payload = {
-      targetWord: String(word?.en || ""),
-      targetMeaning: extractMeaningCore(word?.zh || ""),
+      targetWord: targetWords[0] || "",
+      targetWords,
+      targetMeaning: targetMeanings[0] || "",
+      targetMeanings,
       difficulty: getSentenceDifficulty(),
+      sentencePattern: sentencePattern.label,
+      sentencePatternInstruction: sentencePattern.instruction,
       requestId: String(options?.requestId || "").trim(),
     };
 
@@ -534,6 +557,8 @@ async function buildSentenceTaskByModel(word, options = {}) {
     return {
       zhPrompt,
       referenceEn,
+      targetWords,
+      targetMeanings,
       source: model ? `model:${model}` : "model",
     };
   } catch (err) {
@@ -991,7 +1016,7 @@ async function favoriteCurrentSentence() {
     return;
   }
 
-  const enText = String(answerInputEl.value || "").trim();
+  const enText = String(currentSentenceFavoriteAnswer || answerInputEl.value || "").trim();
   if (!enText) {
     markResult(false, "请先输入英文翻译，再收藏句子。\n参考答案: 暂无");
     return;
@@ -1027,15 +1052,77 @@ function containsTargetWord(answer, target) {
   return targetTokens.every((token) => answerTokens.has(token));
 }
 
+function formatSentenceAnalysisForDisplay(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+
+  let normalized = raw
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/^\s*"?analysis"?\s*:\s*"?/i, "")
+    .replace(/"\s*,?\s*$/, "")
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, "\n")
+    .replace(/(?:^|；|;)\s*Chinese\s*prompt\s*:\s*[^；;\n]*(?:[；;]|$)/gi, "\n")
+    .replace(/^\s*Chinese\s*prompt\s*:\s*[^\n]*\n?/i, "")
+    .replace(/[“”]/g, '"')
+    .replace(/；/g, "\n")
+    .replace(/;/g, "\n")
+    .replace(/\s+(?=\d+\.\s)/g, "\n")
+    // The model sometimes puts numbered findings in a single JSON string.
+    // Keep every finding on its own visual line even without a separator.
+    .replace(/(^|[^\n])\s*(\d+)[.、]\s+(?=\S)/g, "$1\n$2. ")
+    .trim();
+
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .map((line) => line.replace(/^"+|"+$/g, "").trim())
+    .filter(Boolean)
+    .filter((line) => !/^Chinese\s*prompt\s*:/i.test(line))
+    .filter((line) => !/^"?analysis"?\s*:/i.test(line));
+
+  const deduped = [];
+  const seen = new Set();
+  for (const line of lines) {
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(line);
+  }
+
+  return deduped.join("\n");
+}
+
+function normalizeSentenceAnswerForDisplay(text) {
+  const value = String(text || "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/^"+|"+$/g, "")
+    .trim();
+
+  if (!value) return "";
+  if (/^"?analysis"?\s*:/i.test(value)) return "";
+  if (/^Chinese\s*prompt\s*:/i.test(value)) return "";
+  if (/^(?:score|issues?|problem|problems|grammar|analysis|feedback)\s*[:：]/i.test(value)) return "";
+  if (/let me analyze|user'?s sentence|target words?|target word|issues?:/i.test(value)) return "";
+  return value;
+}
+
 async function evaluateSentenceAnswerByModel(input, item, task, options = {}) {
   if (!window.electronAI?.evaluateSentence) {
     throw new Error("AI sentence evaluation is unavailable.");
   }
 
   try {
+    const taskWords = Array.isArray(task?.targetWords) ? task.targetWords.filter(Boolean) : [];
+    const taskMeanings = Array.isArray(task?.targetMeanings) ? task.targetMeanings.filter(Boolean) : [];
     const payload = {
       zhPrompt: task.zhPrompt,
-      targetWord: item.en,
+      targetWord: taskWords[0] || String(item?.en || "").trim(),
+      targetWords: taskWords.length ? taskWords : [String(item?.en || "").trim()].filter(Boolean),
+      targetMeaning: taskMeanings[0] || String(item?.zh || "").trim(),
+      targetMeanings: taskMeanings.length ? taskMeanings : [String(item?.zh || "").trim()].filter(Boolean),
       referenceEn: task.referenceEn,
       userAnswer: input,
       requestId: String(options?.requestId || "").trim(),
@@ -1056,21 +1143,22 @@ async function evaluateSentenceAnswerByModel(input, item, task, options = {}) {
     }
 
     const ok = Boolean(result.ok);
-    const feedback = String(result.feedback || "").trim();
-    const betterSentence = String(result.betterSentence || "").trim();
-    const score = Number(result.score || 0);
-    const model = String(result.model || "");
+    const analysis = formatSentenceAnalysisForDisplay(result.analysis || result.feedback || "");
+    const correctAnswer = normalizeSentenceAnswerForDisplay(result.correctAnswer || task.referenceEn || "");
+    const revision = normalizeSentenceAnswerForDisplay(result.revision || result.betterSentence || task.referenceEn || "");
+    const cleanCorrectAnswer = /^please include\b/i.test(correctAnswer) ? "" : correctAnswer;
+    const cleanRevision = /^please include\b/i.test(revision) ? "" : revision;
+    const displayCorrectAnswer = cleanCorrectAnswer || "暂无";
 
     const parts = [];
-    const directAnswer = betterSentence || task.referenceEn;
-    if (feedback) parts.push(`问题分析: ${feedback}`);
-    if (directAnswer) parts.push(`参考答案: ${directAnswer}`);
-    if (Number.isFinite(score)) parts.push(`评分: ${Math.max(0, Math.min(100, Math.round(score)))}`);
-    if (model) parts.push(`模型: ${model}`);
+    if (analysis) parts.push(`分析与修正:\n${analysis}`);
+    if (cleanRevision && cleanRevision !== cleanCorrectAnswer) parts.push(`修正版:\n${cleanRevision}`);
+    parts.push(`正确答案:\n${displayCorrectAnswer}`);
 
     return {
       ok,
-      detail: parts.join(" | ") || `参考答案: ${task.referenceEn}`,
+      detail: parts.join("\n\n") || `正确答案:\n${task.referenceEn || "暂无"}`,
+      favoriteAnswer: cleanCorrectAnswer || cleanRevision || task.referenceEn || "",
       source: "model",
     };
   } catch (err) {
@@ -2768,6 +2856,24 @@ function updateScore() {
 
 function updateProgress() {
   const total = Math.max(0, sessionTargetCount);
+  const hasActiveSession = currentSessionType === "study" || currentSessionType === "review" || currentSessionType === "quiz";
+
+  // Study and review progress mean completed words, not the current queue
+  // position. A normal word needs three correct rounds before completion.
+  if ((currentSessionType === "study" || currentSessionType === "review") && mode !== "sentence") {
+    const done = Math.min(total, Math.max(0, sessionCompletedCount));
+    progressEl.textContent = `${done}/${total}`;
+    return;
+  }
+
+  if (hasActiveSession && total > 0 && queue.length > 0) {
+    const queuePosition = Math.min(total, Math.max(1, total - queue.length + 1));
+    sessionProgressPosition = Math.min(total, Math.max(sessionProgressPosition, queuePosition));
+    const current = Math.max(1, sessionProgressPosition);
+    progressEl.textContent = `${current}/${total}`;
+    return;
+  }
+
   const done = Math.min(total, Math.max(0, sessionCompletedCount));
   progressEl.textContent = `${done}/${total}`;
 }
@@ -2804,6 +2910,7 @@ function resetSessionMasteryState(initialQueue) {
   const ids = new Set((initialQueue || []).map((w) => w.id));
   sessionTargetCount = ids.size;
   sessionCompletedCount = 0;
+  sessionProgressPosition = ids.size ? 1 : 0;
   sessionWordMastery = new Map();
   for (const id of ids) {
     sessionWordMastery.set(id, {
@@ -2833,6 +2940,7 @@ function cloneSnapshot(snapshot) {
     currentIndex: 0,
     sessionTargetCount: Number(snapshot.sessionTargetCount || 0),
     sessionCompletedCount: Number(snapshot.sessionCompletedCount || 0),
+    sessionProgressPosition: Number(snapshot.sessionProgressPosition || 0),
     masteryEntries: Array.isArray(snapshot.masteryEntries)
       ? snapshot.masteryEntries.map((row) => (Array.isArray(row) ? [row[0], row[1]] : row))
       : [],
@@ -2846,6 +2954,7 @@ function buildCurrentSessionSnapshot() {
     currentIndex: 0,
     sessionTargetCount,
     sessionCompletedCount,
+    sessionProgressPosition,
     masteryEntries: serializeSessionMastery(),
     mode,
   };
@@ -2977,6 +3086,13 @@ function restoreSessionSnapshot(type) {
   currentIndex = 0;
   sessionTargetCount = Math.max(0, Number(snap.sessionTargetCount || 0));
   sessionCompletedCount = Math.max(0, Number(snap.sessionCompletedCount || 0));
+  const restoredQueuePosition = sessionTargetCount > 0
+    ? Math.min(sessionTargetCount, Math.max(1, sessionTargetCount - restoredQueue.length + 1))
+    : 0;
+  sessionProgressPosition = Math.min(
+    sessionTargetCount,
+    Math.max(restoredQueuePosition, Number(snap.sessionProgressPosition || 0))
+  );
   sessionWordMastery = deserializeSessionMastery(snap.masteryEntries);
   mode = String(snap.mode || mode);
   currentSessionType = type;
@@ -3005,7 +3121,7 @@ function getSessionMastery(wordId) {
 function updateSessionWordMastery(wordId, ok, countAsCorrect) {
   const state = getSessionMastery(wordId);
   const wasCompleted = state.completed;
-  const requiredCorrectCount = currentSessionType === "quiz" ? 1 : 3;
+  const requiredCorrectCount = currentSessionType === "quiz" || mode === "sentence" ? 1 : 3;
 
   if (ok && countAsCorrect) {
     state.correctCount = Math.max(0, Number(state.correctCount || 0)) + 1;
@@ -3022,6 +3138,23 @@ function updateSessionWordMastery(wordId, ok, countAsCorrect) {
   }
 
   return state;
+}
+
+function removeWordFromCurrentSession(wordId) {
+  const targetId = Number(wordId);
+  if (!Number.isFinite(targetId)) return;
+
+  queue = queue.filter((word) => Number(word?.id) !== targetId);
+
+  const state = sessionWordMastery.get(targetId);
+  if (state) {
+    if (state.completed) {
+      sessionCompletedCount = Math.max(0, sessionCompletedCount - 1);
+    }
+    sessionWordMastery.delete(targetId);
+  }
+
+  sessionTargetCount = Math.max(0, sessionTargetCount - 1);
 }
 
 async function settleReviewCurveForRound() {
@@ -3093,6 +3226,7 @@ function setIdleMessage(msg, label = "Session Status") {
   currentIndex = 0;
   sessionTargetCount = 0;
   sessionCompletedCount = 0;
+  sessionProgressPosition = 0;
   sessionWordMastery = new Map();
   progressEl.textContent = "0/0";
   if (scoreEl) {
@@ -3140,6 +3274,7 @@ function resetLearningSession() {
   currentIndex = 0;
   sessionTargetCount = 0;
   sessionCompletedCount = 0;
+  sessionProgressPosition = 0;
   sessionWordMastery = new Map();
   answeredThisRound = false;
   popFirstAttemptJudged = false;
@@ -3177,11 +3312,29 @@ async function renderQuestion() {
   resultEl.className = "result";
   correctAnswerEl.textContent = "";
   answerInputEl.value = "";
+  currentSentenceFavoriteAnswer = "";
 
   if (mode === "sentence") {
     promptLabelEl.textContent = "Chinese Sentence";
     promptTextEl.textContent = "Generating sentence...";
     answerInputEl.placeholder = "Type a full English sentence";
+
+    // Sentence exercises use only words the learner has already encountered,
+    // rather than the current queue item or words the model invents.
+    const sentencePool = words.filter((word) => {
+      const status = getProgress(word.id).status;
+      return status === "learning" || status === "mastered";
+    });
+    const sentenceWords = pickSentencePracticeWords(sentencePool, 2, 4);
+    if (sentenceWords.length < 2) {
+      currentSentenceTask = null;
+      promptTextEl.textContent = "至少需要两个已学习单词，才能生成句子练习。";
+      answerInputEl.placeholder = "请先学习至少两个单词";
+      updateProgress();
+      renderCurrentWordTags();
+      resetExamplesHint();
+      return;
+    }
 
     const requestId = ++sentenceTaskRequestId;
     const aiRequestId = nextAiRequestId("sentence-prompt");
@@ -3189,9 +3342,9 @@ async function renderQuestion() {
     let task;
     try {
       tick = setInterval(() => {
-        renderThinkingPreviewInElement(correctAnswerEl, "Generating sentence...", aiStreamTextByRequestId.get(aiRequestId) || "");
+        renderThinkingPreviewInElement(correctAnswerEl, "Generating sentence...");
       }, 180);
-      task = await buildSentenceTask(item, { requestId: aiRequestId });
+      task = await buildSentenceTask(sentenceWords, { requestId: aiRequestId });
       if (tick) clearInterval(tick);
       aiStreamTextByRequestId.delete(aiRequestId);
       clearThinkingPreviewInElement(correctAnswerEl);
@@ -3240,10 +3393,47 @@ async function renderQuestion() {
   answerInputEl.focus();
 }
 
-function markResult(ok, detail) {
+function renderSentenceAnswerDetail(detail, targetWords) {
+  const text = String(detail || "");
+  const wordsToHighlight = [...new Set((Array.isArray(targetWords) ? targetWords : [])
+    .map((word) => String(word || "").trim())
+    .filter(Boolean))];
+
+  correctAnswerEl.innerHTML = "";
+  if (!wordsToHighlight.length) {
+    correctAnswerEl.textContent = text;
+    return;
+  }
+
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matcher = new RegExp(`\\b(${wordsToHighlight.map(escapeRegex).join("|")})\\b`, "gi");
+  let cursor = 0;
+  for (const match of text.matchAll(matcher)) {
+    const index = Number(match.index || 0);
+    if (index > cursor) {
+      correctAnswerEl.append(document.createTextNode(text.slice(cursor, index)));
+    }
+    const matchedWord = match[0];
+    const targetIndex = wordsToHighlight.findIndex((word) => word.toLowerCase() === matchedWord.toLowerCase());
+    const highlight = document.createElement("span");
+    highlight.className = `sentence-target-word sentence-target-word-${Math.max(0, targetIndex) % 4}`;
+    highlight.textContent = matchedWord;
+    correctAnswerEl.append(highlight);
+    cursor = index + matchedWord.length;
+  }
+  if (cursor < text.length) {
+    correctAnswerEl.append(document.createTextNode(text.slice(cursor)));
+  }
+}
+
+function markResult(ok, detail, targetWords = []) {
   resultEl.textContent = ok ? "Correct" : "Incorrect";
   resultEl.className = ok ? "result ok" : "result bad";
-  correctAnswerEl.textContent = detail;
+  if (mode === "sentence") {
+    renderSentenceAnswerDetail(detail, targetWords);
+  } else {
+    correctAnswerEl.textContent = detail;
+  }
 }
 
 function formatWordMasteryProgress(state) {
@@ -3398,6 +3588,8 @@ async function checkAnswer() {
         clearThinkingPreviewInElement(correctAnswerEl);
         ok = evaluated.ok;
         detail = evaluated.detail;
+        currentSentenceFavoriteAnswer = String(evaluated.favoriteAnswer || currentSentenceTask?.referenceEn || "").trim();
+        answeredThisRound = true;
       } catch (err) {
         if (tick) clearInterval(tick);
         aiStreamTextByRequestId.delete(aiRequestId);
@@ -3419,7 +3611,7 @@ async function checkAnswer() {
 
     // Move to next question only after getting this word correct.
     // Wrong attempts stay on the current word for retry.
-    answeredThisRound = ok;
+    answeredThisRound = mode === "sentence" ? true : ok;
     totalChecked += 1;
     if (ok) totalCorrect += 1;
     const isFirstAttemptOfThisPop = !popFirstAttemptJudged;
@@ -3429,7 +3621,7 @@ async function checkAnswer() {
       const passedCleanly = !popHadWrongAttempt;
       if (currentSessionType === "review") {
         // Review curve is settled only once when the full review round ends.
-      } else if (currentSessionType === "study") {
+      } else if (currentSessionType === "study" && mode !== "sentence") {
         await applyStudyProgressAfterCompletion(item, passedCleanly);
       } else if (currentSessionType === "quiz") {
         // Quiz is exam-only and does not change learning curve or progress.
@@ -3438,8 +3630,9 @@ async function checkAnswer() {
       }
     }
 
-    const countAsCorrect = isFirstAttemptOfThisPop && ok;
-    const mastery = updateSessionWordMastery(item.id, ok, countAsCorrect);
+    const countAsCorrect = mode === "sentence" ? true : isFirstAttemptOfThisPop && ok;
+    const masteryOk = mode === "sentence" ? true : ok;
+    const mastery = updateSessionWordMastery(item.id, masteryOk, countAsCorrect);
     if (isFirstAttemptOfThisPop && !mastery.completed && !popRetryScheduled) {
       ensureSessionRetry(item);
       popRetryScheduled = true;
@@ -3447,9 +3640,9 @@ async function checkAnswer() {
 
     // Hidden mode and normal mode share the same queue flow.
 
-    const progressText = formatWordMasteryProgress(mastery);
+    const progressText = mode === "sentence" ? "" : formatWordMasteryProgress(mastery);
     const resultDetail = progressText ? `${detail}\n${progressText}` : detail;
-    markResult(ok, resultDetail);
+    markResult(ok, resultDetail, mode === "sentence" ? currentSentenceTask?.targetWords : []);
     if (isHiddenMode && activeMainTab === "study" && (currentSessionType === "study" || currentSessionType === "review" || currentSessionType === "quiz")) {
       if (!ok) {
         resultEl.textContent = "Retry Later";
@@ -3501,13 +3694,14 @@ async function showAnswer() {
     answerText = `中文释义: ${item.zh}`;
   }
 
-  markResult(false, answerText);
+  markResult(false, answerText, mode === "sentence" ? currentSentenceTask?.targetWords : []);
 }
 
 function nextQuestion() {
   if (!queue.length) return;
   // Queue mode: move forward by removing the current head.
   queue.shift();
+  updateProgress();
 
   if (!queue.length) {
     clearSessionSnapshot(currentSessionType);
@@ -3530,10 +3724,10 @@ async function markCurrentWordMastered() {
   if (!item) return;
 
   await setWordStatus(item.id, "mastered");
-
-  queue.shift();
+  removeWordFromCurrentSession(item.id);
 
   updateStatusCounts();
+  updateProgress();
   renderSearchResults();
   renderManagerPanel();
 
@@ -3547,6 +3741,7 @@ async function markCurrentWordMastered() {
   }
 
   currentIndex = 0;
+  saveCurrentSessionSnapshot();
 
   renderQuestion();
 }
@@ -3683,7 +3878,27 @@ function resumeSessionView() {
   renderQuestion();
 }
 
+function syncModeFromSelection() {
+  const checked = document.querySelector("input[name='mode']:checked");
+  const selectedMode = String(checked?.value || "").trim();
+  if (!selectedMode) return;
+  if (selectedMode === mode) return;
+  mode = selectedMode;
+  applyModeSpecificUI();
+}
+
+function shouldResumeSnapshotByMode(type) {
+  if (type !== "study") return true;
+  const snap = sessionSnapshots.study;
+  if (!snap || typeof snap !== "object") return true;
+  const snapMode = String(snap.mode || "").trim();
+  if (!snapMode) return true;
+  return snapMode === mode;
+}
+
 function startOrResumeSession(type) {
+  syncModeFromSelection();
+
   if (currentSessionType === type && hasUnfinishedSession()) {
     resumeSessionView();
     return;
@@ -3691,6 +3906,12 @@ function startOrResumeSession(type) {
 
   if (currentSessionType !== "none" && currentSessionType !== type) {
     saveCurrentSessionSnapshot();
+  }
+
+  if (!shouldResumeSnapshotByMode(type)) {
+    clearSessionSnapshot(type);
+    startSession(type);
+    return;
   }
 
   if (restoreSessionSnapshot(type)) {

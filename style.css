@@ -193,11 +193,6 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
   font-size: 0.88rem;
 }
 
-.mode-group #sentenceDifficultyWrap {
-  margin-left: 4px;
-  white-space: nowrap;
-}
-
 .session-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -226,14 +221,6 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
   background: rgba(15, 21, 30, 0.8);
 }
 
-#sentenceDifficulty {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: 0.82rem;
-  color: var(--ink);
-  background: rgba(15, 21, 30, 0.8);
-}
 
 .status-panel {
   display: grid;
@@ -1137,6 +1124,7 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
   min-height: 0;
   margin-top: 2px;
   font-size: 0.8rem;
+  white-space: pre-wrap;
 }
 
 .thinking-preview-host {
@@ -1169,6 +1157,32 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
 
 .correct-answer:empty {
   display: none;
+}
+
+.sentence-target-word {
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 700;
+}
+
+.sentence-target-word-0 {
+  color: #7dd3fc;
+  background: rgba(14, 116, 144, 0.26);
+}
+
+.sentence-target-word-1 {
+  color: #86efac;
+  background: rgba(22, 101, 52, 0.28);
+}
+
+.sentence-target-word-2 {
+  color: #fcd34d;
+  background: rgba(146, 64, 14, 0.28);
+}
+
+.sentence-target-word-3 {
+  color: #f0abfc;
+  background: rgba(157, 23, 77, 0.28);
 }
 
 .examples-box {

@@ -197,14 +197,6 @@ searchInputEl.addEventListener("input", () => {
   scheduleSuggestRender();
 });
 
-if (sentenceDifficultyEl) {
-  sentenceDifficultyEl.addEventListener("change", () => {
-    if (mode === "sentence" && queue.length) {
-      renderQuestion();
-    }
-  });
-}
-
 document.addEventListener("click", (e) => {
   if (!searchSuggestEl) return;
   if (e.target === searchInputEl || searchSuggestEl.contains(e.target)) return;
