@@ -70,7 +70,17 @@ function createAiService({ appRoot }) {
       const target = String(word || "").trim().toLowerCase();
       if (!target) return true;
       const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-      return new RegExp(`\\b${escaped}\\b`, "i").test(answer);
+
+      // A target word must appear in the answer, but normal grammatical forms
+      // are valid too: possess → possesses, cheat → cheated, harmony → harmonies.
+      if (/\s/.test(target)) {
+        return new RegExp(`\\b${escaped}\\b`, "i").test(answer);
+      }
+      if (target.endsWith("y") && target.length > 2) {
+        const root = target.slice(0, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`\\b(?:${escaped}|${root}ies)\\b`, "i").test(answer);
+      }
+      return new RegExp(`\\b${escaped}(?:s|es|ed|ing)?\\b`, "i").test(answer);
     });
   }
 
@@ -974,7 +984,7 @@ function createAiService({ appRoot }) {
       "3) 输出必须以 { 开始、以 } 结束；不要展示思考过程、方案、字数统计或解释。",
       "4) zhPrompt 只放题目正文，不要解释，不要编号，不要引号，不要附加说明。",
       "5) 句子自然通顺，难度在雅思范围。",
-      "6) referenceEn 必须自然、完整地包含每一个给定的目标词或短语，不能遗漏、替换或改写任何一个目标词。",
+      "6) referenceEn 必须自然、完整地包含每一个给定的目标词或短语，不能遗漏或用同义词替换；为符合语法可使用词形变化，例如 possess 可写为 possesses。",
       `7) 难度要求: ${diffSpec}`,
       "8) 题目可以稍长，尤其是目标词较多时。",
       "9) 必须遵守输入指定的句型要求；除非指定转折/让步句，否则不得使用 although、though、despite、while 等转折或让步结构。",

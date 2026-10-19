@@ -1143,6 +1143,8 @@ async function evaluateSentenceAnswerByModel(input, item, task, options = {}) {
     }
 
     const ok = Boolean(result.ok);
+    const rawScore = Number(result.score);
+    const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, rawScore)) : 0;
     const analysis = formatSentenceAnalysisForDisplay(result.analysis || result.feedback || "");
     const correctAnswer = normalizeSentenceAnswerForDisplay(result.correctAnswer || task.referenceEn || "");
     const revision = normalizeSentenceAnswerForDisplay(result.revision || result.betterSentence || task.referenceEn || "");
@@ -1151,6 +1153,7 @@ async function evaluateSentenceAnswerByModel(input, item, task, options = {}) {
     const displayCorrectAnswer = cleanCorrectAnswer || "暂无";
 
     const parts = [];
+    parts.push(`得分: ${score}/100`);
     if (analysis) parts.push(`分析与修正:\n${analysis}`);
     if (cleanRevision && cleanRevision !== cleanCorrectAnswer) parts.push(`修正版:\n${cleanRevision}`);
     parts.push(`正确答案:\n${displayCorrectAnswer}`);
