@@ -81,6 +81,7 @@ const newCountEl = document.getElementById("newCount");
 const learningCountEl = document.getElementById("learningCount");
 const masteredCountEl = document.getElementById("masteredCount");
 const dueCountEl = document.getElementById("dueCount");
+const reviewRemainingEl = document.getElementById("reviewRemaining");
 const filteredCountEl = document.getElementById("filteredCount");
 const sessionTypeTextEl = document.getElementById("sessionTypeText");
 const searchInputEl = document.getElementById("searchInput");
@@ -1923,7 +1924,7 @@ function applyHiddenModeWindowSize(enabled) {
       };
     }
     try {
-      window.resizeTo(550, 530);
+      window.resizeTo(600, 600);
     } catch {
       // Ignore when resize APIs are restricted.
     }
@@ -3085,6 +3086,17 @@ function restoreSessionSnapshot(type) {
     return false;
   }
 
+  // A normal word-study session is exclusively for new words. Older versions
+  // promoted words to "learning" after their first correct attempt while they
+  // were still queued for the same session, so those saved sessions must not
+  // be resumed as a Study session.
+  const snapshotMode = String(snap.mode || mode).trim();
+  const isNormalWordStudy = type === "study" && snapshotMode !== "sentence";
+  if (isNormalWordStudy && restoredQueue.some((word) => getProgress(word.id).status !== "new")) {
+    clearSessionSnapshot(type);
+    return false;
+  }
+
   queue = restoredQueue;
   currentIndex = 0;
   sessionTargetCount = Math.max(0, Number(snap.sessionTargetCount || 0));
@@ -3219,6 +3231,13 @@ function updateStatusCounts() {
   if (learningCountEl) learningCountEl.textContent = String(learningCount);
   if (masteredCountEl) masteredCountEl.textContent = String(masteredCount);
   if (dueCountEl) dueCountEl.textContent = String(dueCount);
+  if (reviewRemainingEl) {
+    const isReview = currentSessionType === "review";
+    reviewRemainingEl.classList.toggle("is-hidden", !isReview);
+    reviewRemainingEl.textContent = isReview
+      ? `今日待复习 ${dueCount} 词 · 本轮剩余 ${queue.length} 词`
+      : "";
+  }
   if (filteredCountEl) filteredCountEl.textContent = String(words.filter((w) => wordMatchesFilters(w)).length);
   updateSessionTypeText();
   renderQueueDebug();
@@ -3624,11 +3643,9 @@ async function checkAnswer() {
       const passedCleanly = !popHadWrongAttempt;
       if (currentSessionType === "review") {
         // Review curve is settled only once when the full review round ends.
-      } else if (currentSessionType === "study" && mode !== "sentence") {
-        await applyStudyProgressAfterCompletion(item, passedCleanly);
       } else if (currentSessionType === "quiz") {
         // Quiz is exam-only and does not change learning curve or progress.
-      } else {
+      } else if (currentSessionType !== "study") {
         await applyCurveAfterAnswer(item, passedCleanly);
       }
     }
@@ -3636,6 +3653,9 @@ async function checkAnswer() {
     const countAsCorrect = mode === "sentence" ? true : isFirstAttemptOfThisPop && ok;
     const masteryOk = mode === "sentence" ? true : ok;
     const mastery = updateSessionWordMastery(item.id, masteryOk, countAsCorrect);
+    if (currentSessionType === "study" && mode !== "sentence" && mastery.completed) {
+      await applyStudyProgressAfterCompletion(item, !mastery.hadWrong);
+    }
     if (isFirstAttemptOfThisPop && !mastery.completed && !popRetryScheduled) {
       ensureSessionRetry(item);
       popRetryScheduled = true;
@@ -3704,6 +3724,7 @@ function nextQuestion() {
   if (!queue.length) return;
   // Queue mode: move forward by removing the current head.
   queue.shift();
+  updateStatusCounts();
   updateProgress();
 
   if (!queue.length) {

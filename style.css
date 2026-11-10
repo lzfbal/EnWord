@@ -971,11 +971,16 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
 
 .meta {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
   color: var(--muted);
   font-weight: 500;
   margin-bottom: 10px;
   font-size: 0.82rem;
+}
+
+.meta #score {
+  margin-left: auto;
 }
 
 .prompt-wrap {
@@ -1183,6 +1188,12 @@ body.hidden-mode.study-tab-active #quizPanel .example-line {
 .sentence-target-word-3 {
   color: #f0abfc;
   background: rgba(157, 23, 77, 0.28);
+}
+
+.review-remaining {
+  color: #9cc9f2;
+  font-size: 0.76rem;
+  white-space: nowrap;
 }
 
 .examples-box {
