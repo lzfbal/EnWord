@@ -983,7 +983,7 @@ function createAiService({ appRoot }) {
       "2) JSON 格式: { \"zhPrompt\": string, \"referenceEn\": string, \"targetWords\": string[], \"targetMeanings\": string[] }。",
       "3) 输出必须以 { 开始、以 } 结束；不要展示思考过程、方案、字数统计或解释。",
       "4) zhPrompt 只放题目正文，不要解释，不要编号，不要引号，不要附加说明。",
-      "5) 句子自然通顺，难度在雅思范围。",
+      "5) 句子的语义合理、场景真实、表达自然通顺是最高优先级；不得为了拼凑目标词而生成不合逻辑、含义模糊或搭配生硬的句子。",
       "6) referenceEn 必须自然、完整地包含每一个给定的目标词或短语，不能遗漏或用同义词替换；为符合语法可使用词形变化，例如 possess 可写为 possesses。",
       `7) 难度要求: ${diffSpec}`,
       "8) 题目可以稍长，尤其是目标词较多时。",
@@ -1000,6 +1000,7 @@ function createAiService({ appRoot }) {
       "中文释义列表: {{targetMeanings}}",
       "指定句型: {{sentencePattern}}",
       "句型要求: {{sentencePatternInstruction}}",
+      "先确保中文题目和英文参考答案都表达同一个合理、清晰、自然的场景；若目标词难以搭配，请选择一个能够同时容纳它们的具体场景，不要生硬并列无关事实。",
       "仅输出上述 JSON。",
     ].join("\n"))
       .replace(/{{\s*difficulty\s*}}/g, difficulty)

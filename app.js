@@ -25,6 +25,9 @@ if (tabSynonymFavoritesBtn) {
 checkBtn.addEventListener("click", checkAnswer);
 showBtn.addEventListener("click", showAnswer);
 nextBtn.addEventListener("click", nextQuestion);
+quizRevealBtn?.addEventListener("click", revealQuizSelfAssessmentAnswer);
+quizKnowBtn?.addEventListener("click", () => assessQuizWord(true));
+quizDontKnowBtn?.addEventListener("click", () => assessQuizWord(false));
 favoriteSentenceBtn.addEventListener("click", favoriteCurrentSentence);
 markMasteredBtn.addEventListener("click", markCurrentWordMastered);
 exampleBtn.addEventListener("click", showExamplesForCurrentWord);
@@ -204,6 +207,22 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
+  if (isQuizSelfAssessment() && quizVisible && activeMainTab === "study"
+    && (!detailModalEl || detailModalEl.classList.contains("is-hidden"))
+    && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const target = e.target;
+    const editable = target instanceof HTMLElement
+      && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+    const unrelatedButton = target instanceof HTMLButtonElement
+      && !quizSelfAssessmentActionsEl?.contains(target);
+    if (!editable && !unrelatedButton && ["Enter", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      e.preventDefault();
+      if (e.key === "Enter") revealQuizSelfAssessmentAnswer();
+      if (e.key === "ArrowLeft") assessQuizWord(true);
+      if (e.key === "ArrowRight") assessQuizWord(false);
+      return;
+    }
+  }
   if (e.key === "Escape" && detailModalEl && !detailModalEl.classList.contains("is-hidden")) {
     closeWordDetailModal();
   }

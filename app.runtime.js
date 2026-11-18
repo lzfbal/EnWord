@@ -48,6 +48,12 @@ const checkLoadingEl = document.getElementById("checkLoading");
 const checkBtn = document.getElementById("checkBtn");
 const showBtn = document.getElementById("showBtn");
 const nextBtn = document.getElementById("nextBtn");
+const quizSelfAssessmentActionsEl = document.getElementById("quizSelfAssessmentActions");
+const quizRevealBtn = document.getElementById("quizRevealBtn");
+const quizKnowBtn = document.getElementById("quizKnowBtn");
+const quizDontKnowBtn = document.getElementById("quizDontKnowBtn");
+const answerWrapEl = document.querySelector(".answer-wrap");
+const standardActionsEl = document.querySelector(".quiz > .actions");
 const markMasteredBtn = document.getElementById("markMasteredBtn");
 const exampleBtn = document.getElementById("exampleBtn");
 const studySynonymBtn = document.getElementById("studySynonymBtn");
@@ -392,13 +398,21 @@ function pickSentencePracticePattern() {
   return pattern;
 }
 
+function isQuizSelfAssessment() {
+  return currentSessionType === "quiz" && mode === "en2zh";
+}
+
 function applyModeSpecificUI() {
   const sentenceMode = mode === "sentence";
+  const selfAssessment = isQuizSelfAssessment();
+  answerWrapEl?.classList.toggle("is-hidden", selfAssessment);
+  standardActionsEl?.classList.toggle("is-hidden", selfAssessment);
+  quizSelfAssessmentActionsEl?.classList.toggle("is-hidden", !selfAssessment);
   if (showBtn) {
     showBtn.classList.add("is-hidden");
   }
   if (wordTagEditorEl) {
-    wordTagEditorEl.classList.toggle("is-hidden", sentenceMode);
+    wordTagEditorEl.classList.toggle("is-hidden", sentenceMode || selfAssessment);
   }
   if (markMasteredBtn) {
     markMasteredBtn.classList.toggle("is-hidden", sentenceMode);
@@ -506,7 +520,7 @@ async function favoriteTranslatedSentence() {
   }
 }
 
-function pickSentencePracticeWords(pool, minCount = 2, maxCount = 4) {
+function pickSentencePracticeWords(pool, minCount = 2, maxCount = 2) {
   const source = Array.isArray(pool) ? [...pool.filter(Boolean)] : [];
   shuffle(source);
 
@@ -1821,6 +1835,7 @@ function renderFilterTags() {
 function setQuizVisible(visible) {
   if (!quizPanelEl) return;
   quizVisible = Boolean(visible);
+  applyModeSpecificUI();
   const shouldShowQuiz = activeMainTab === "study" && (quizVisible || isHiddenMode);
   if (shouldShowQuiz) {
     quizPanelEl.classList.remove("is-hidden");
@@ -2864,7 +2879,7 @@ function updateProgress() {
 
   // Study and review progress mean completed words, not the current queue
   // position. A normal word needs three correct rounds before completion.
-  if ((currentSessionType === "study" || currentSessionType === "review") && mode !== "sentence") {
+  if (((currentSessionType === "study" || currentSessionType === "review") && mode !== "sentence") || isQuizSelfAssessment()) {
     const done = Math.min(total, Math.max(0, sessionCompletedCount));
     progressEl.textContent = `${done}/${total}`;
     return;
@@ -3110,6 +3125,9 @@ function restoreSessionSnapshot(type) {
   );
   sessionWordMastery = deserializeSessionMastery(snap.masteryEntries);
   mode = String(snap.mode || mode);
+  const modeRadio = Array.from(document.querySelectorAll("input[name='mode']"))
+    .find((radio) => radio.value === mode);
+  if (modeRadio) modeRadio.checked = true;
   currentSessionType = type;
   answeredThisRound = false;
   totalChecked = 0;
@@ -3318,6 +3336,7 @@ function isCurrentSessionCompleted() {
 
 async function renderQuestion() {
   renderQueueDebug();
+  applyModeSpecificUI();
   if (!queue.length) {
     promptTextEl.textContent = "No available item in this session.";
     currentWordTagsEl.innerHTML = "";
@@ -3330,6 +3349,8 @@ async function renderQuestion() {
   popRetryScheduled = false;
   popHadWrongAttempt = false;
   answeredThisRound = false;
+  if (quizKnowBtn) quizKnowBtn.disabled = true;
+  if (quizDontKnowBtn) quizDontKnowBtn.disabled = true;
   resultEl.textContent = "";
   resultEl.className = "result";
   correctAnswerEl.textContent = "";
@@ -3347,7 +3368,9 @@ async function renderQuestion() {
       const status = getProgress(word.id).status;
       return status === "learning" || status === "mastered";
     });
-    const sentenceWords = pickSentencePracticeWords(sentencePool, 2, 4);
+    // Two learned words provide useful translation practice without forcing
+    // the model to combine several unrelated words into an unnatural sentence.
+    const sentenceWords = pickSentencePracticeWords(sentencePool, 2, 2);
     if (sentenceWords.length < 2) {
       currentSentenceTask = null;
       promptTextEl.textContent = "至少需要两个已学习单词，才能生成句子练习。";
@@ -3412,7 +3435,46 @@ async function renderQuestion() {
   updateProgress();
   renderCurrentWordTags();
   resetExamplesHint();
-  answerInputEl.focus();
+  if (isQuizSelfAssessment()) {
+    quizRevealBtn?.focus();
+  } else {
+    answerInputEl.focus();
+  }
+}
+
+function revealQuizSelfAssessmentAnswer() {
+  if (!isQuizSelfAssessment() || !queue.length || !quizVisible) return;
+  correctAnswerEl.textContent = `中文释义: ${currentWord().zh}`;
+  if (quizKnowBtn) quizKnowBtn.disabled = false;
+  if (quizDontKnowBtn) quizDontKnowBtn.disabled = false;
+}
+
+function assessQuizWord(known) {
+  if (!isQuizSelfAssessment() || !queue.length || !quizVisible || quizKnowBtn?.disabled) return;
+  const item = queue.shift();
+  if (known) {
+    updateSessionWordMastery(item.id, true, true);
+  } else {
+    updateSessionWordMastery(item.id, false, false);
+    queue.push(item);
+  }
+
+  updateProgress();
+  updateStatusCounts();
+  if (!queue.length) {
+    clearSessionSnapshot("quiz");
+    currentSessionType = "none";
+    syncStatusPanelVisibility();
+    setQuizVisible(false);
+    syncStudyActionButtons();
+    setIdleMessage("Session completed. Start a new study or review session.");
+    updateStatusCounts();
+    persistSessionState();
+    return;
+  }
+
+  saveCurrentSessionSnapshot();
+  renderQuestion();
 }
 
 function renderSentenceAnswerDetail(detail, targetWords) {
@@ -3912,8 +3974,8 @@ function syncModeFromSelection() {
 }
 
 function shouldResumeSnapshotByMode(type) {
-  if (type !== "study") return true;
-  const snap = sessionSnapshots.study;
+  if (type !== "study" && type !== "quiz") return true;
+  const snap = sessionSnapshots[type];
   if (!snap || typeof snap !== "object") return true;
   const snapMode = String(snap.mode || "").trim();
   if (!snapMode) return true;
